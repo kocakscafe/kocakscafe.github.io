@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <meta name="theme-color" content="#1c1917" />
+    <title>Kocak's Caffe · Panel</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; background: #1c1917; color: #fafaf9;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+      body { display: flex; flex-direction: column; }
+      header { display: flex; align-items: center; gap: .5rem; padding: .4rem .6rem;
+        background: #1c1917; border-bottom: 1px solid #292524; flex: none; }
+      .brand { font-weight: 800; color: #e7c9a9; margin-right: .5rem; white-space: nowrap; }
+      nav { display: flex; gap: .35rem; flex: 1; overflow-x: auto; }
+      nav button { appearance: none; border: 0; cursor: pointer; white-space: nowrap;
+        min-height: 2.5rem; padding: 0 1rem; border-radius: .75rem; font: inherit; font-weight: 700;
+        background: #292524; color: #a8a29e; position: relative; }
+      nav button[aria-selected="true"] { background: #7c4a2d; color: #fff; }
+      nav button .dot { position: absolute; top: .35rem; right: .35rem; width: .55rem; height: .55rem;
+        border-radius: 50%; background: #22c55e; display: none; }
+      nav button.live .dot { display: block; }
+      .tools { display: flex; align-items: center; gap: .5rem; color: #a8a29e; font-variant-numeric: tabular-nums; }
+      .tools button { appearance: none; border: 0; cursor: pointer; border-radius: .6rem; min-height: 2.25rem;
+        padding: 0 .7rem; background: #292524; color: #d6d3d1; font: inherit; }
+      main { position: relative; flex: 1; }
+      iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff;
+        visibility: hidden; }
+      iframe.active { visibility: visible; }
+      .hint { position: absolute; inset: 0; display: grid; place-items: center; color: #a8a29e; }
+      .brand img { height: 1.6rem; display: block; }
+
+      /* Açılış (selamlama) ekranı */
+      #splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 4vh; cursor: pointer; text-align: center;
+        background: radial-gradient(ellipse at 50% 35%, #2a2018 0%, #12100e 55%, #0a0908 100%);
+        transition: opacity .8s ease, visibility .8s; }
+      #splash.hide { opacity: 0; visibility: hidden; }
+      #splash img { width: min(58vw, 780px); height: auto; filter: drop-shadow(0 6px 24px rgba(0,0,0,.6));
+        animation: rise 1s ease both; }
+      .slogan { color: #f5f5f4; animation: rise 1s .35s ease both; }
+      .slogan .small { font-weight: 700; letter-spacing: .5em; font-size: clamp(.9rem, 2.2vw, 1.6rem); margin: 0; }
+      .slogan .big { font-weight: 900; line-height: .95; font-size: clamp(2.6rem, 9vw, 7rem); margin: .1em 0;
+        letter-spacing: -.01em; text-transform: uppercase; }
+      .slogan .ve { display: inline-block; font-weight: 900; font-size: clamp(1rem, 2.6vw, 2rem); padding: .05em .35em;
+        border-radius: .25em; color: #1c1917; background: linear-gradient(135deg, #f3d77a, #b8862f 55%, #f6e08f);
+        transform: translateY(-.15em); }
+      .slogan .gold { background: linear-gradient(135deg, #f8e7a1, #c9962f 50%, #f3d77a); -webkit-background-clip: text;
+        background-clip: text; color: transparent; }
+      .tap { color: #a8a29e; font-size: .95rem; animation: rise 1s .8s ease both; }
+      @keyframes rise { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand"><img src="kocaks-logo.png" alt="Koçak's Plus" /></span>
+      <nav role="tablist" aria-label="Paneller"></nav>
+      <div class="tools">
+        <span id="clock"></span>
+        <button type="button" id="reload" title="Açık paneli yenile">⟳</button>
+        <button type="button" id="full" title="Tam ekran">⛶</button>
+      </div>
+    </header>
+    <main id="frames"><div class="hint">Yükleniyor…</div></main>
+
+    <div id="splash" role="dialog" aria-label="Hoş geldiniz">
+      <img src="kocaks-logo.png" alt="Koçak's Plus" />
+      <div class="slogan">
+        <p class="small">TÜM ÜRÜNLERİMİZ</p>
+        <p class="big">Lezzet</p>
+        <span class="ve">VE</span>
+        <p class="big">Memnuniyet</p>
+        <p class="small gold">GARANTİLİDİR!</p>
+      </div>
+      <p class="tap">Başlamak için dokunun</p>
+    </div>
+
+    <script>
+      // Tek pencerede tüm paneller. Paneller ayrı ayrı (iframe) ve HEP AÇIK çalışır:
+      // kasadayken de bar/mutfak siparişleri gelir, sesli uyarı çalar ve fişler basılır.
+      // Her panelin oturumu ayrıdır (kasa ve mutfak aynı bilgisayarda ayrı hesaplarla açık kalabilir).
+      // ?oturum= her sekmeye ayrı oturum verir (Bar ve Mutfak ayrı hesaplarla açık kalır).
+      // Kasa ve Bar eski oturumlarını korur (oturum adı yok).
+      const PANELS = [
+        { id: 'yonetici', label: '⚙️ Yönetici', src: '/yonetim/?oturum=yonetici&bolum=menu&ekran=Y%C3%B6netici%20giri%C5%9Fi', preload: false },
+        { id: 'kasa', label: '💳 Kasa', src: '/yonetim/?sekme=kasa&bolum=cashier&ekran=Kasa%20giri%C5%9Fi', preload: true },
+        { id: 'garson', label: '🧑‍🍳 Garson', src: '/garson/', preload: false },
+        { id: 'bar', label: '🍹 Bar', src: '/bar-mutfak/?ekran=Bar%20ekran%C4%B1', preload: true },
+        { id: 'mutfak', label: '🍳 Mutfak', src: '/bar-mutfak/?oturum=mutfak&ekran=Mutfak%20ekran%C4%B1', preload: true },
+      ];
+      const KEY = 'cafe-panel-tab';
+
+      // Selamlama ekranı:
+      //  * panel açılınca 4 saniye görünür (dokununca hemen kapanır),
+      //  * kasa/panel 10 saniye kullanılmazsa yeniden çıkar; dokununca kapanır.
+      const IDLE_MS = 10_000;
+      const splash = document.getElementById('splash');
+      let lastActive = Date.now();
+      const hideSplash = () => splash.classList.add('hide');
+      const showSplash = () => splash.classList.remove('hide');
+      const activity = () => {
+        lastActive = Date.now();
+      };
+      splash.addEventListener('pointerdown', (e) => {
+        e.preventDefault(); // ekranı kapatan dokunuş arkadaki düğmeye basmasın
+        activity();
+        hideSplash();
+      });
+      setTimeout(hideSplash, 4000);
+      const ACTIVITY_EVENTS = ['pointerdown', 'keydown', 'touchstart', 'wheel'];
+      const watch = (win) => {
+        for (const ev of ACTIVITY_EVENTS) win.addEventListener(ev, activity, { passive: true, capture: true });
+      };
+      watch(window);
+      window.addEventListener('keydown', () => hideSplash());
+      setInterval(() => {
+        if (Date.now() - lastActive > IDLE_MS && splash.classList.contains('hide')) showSplash();
+      }, 1000);
+      const nav = document.querySelector('nav');
+      const frames = document.getElementById('frames');
+      const loaded = new Map();
+
+      function frameFor(p) {
+        let f = loaded.get(p.id);
+        if (!f) {
+          f = document.createElement('iframe');
+          f.title = p.label;
+          // Panel içindeki dokunuşlar da 'kullanılıyor' sayılır (aynı site)
+          f.addEventListener('load', () => { try { watch(f.contentWindow); } catch {} });
+          f.src = p.src;
+          // Ekranı açık tutma, sesli uyarı, tam ekran ve pano izinleri panellere de geçsin
+          f.allow = 'screen-wake-lock; autoplay; fullscreen; clipboard-write; local-network-access; loopback-network; local-network';
+          frames.appendChild(f);
+          loaded.set(p.id, f);
+          frames.querySelector('.hint')?.remove();
+        }
+        return f;
+      }
+
+      function show(id) {
+        const p = PANELS.find((x) => x.id === id) || PANELS[0];
+        const f = frameFor(p);
+        for (const [pid, fr] of loaded) fr.classList.toggle('active', pid === p.id);
+        for (const b of nav.children) b.setAttribute('aria-selected', String(b.dataset.id === p.id));
+        try { localStorage.setItem(KEY, p.id); } catch {}
+        try { f.contentWindow && f.contentWindow.focus(); } catch {}
+        document.title = `${p.label.replace(/^\S+\s/, '')} · Kocak's Caffe`;
+      }
+
+      for (const p of PANELS) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.role = 'tab';
+        b.dataset.id = p.id;
+        b.innerHTML = `${p.label}<span class="dot" aria-hidden="true"></span>`;
+        b.addEventListener('click', () => show(p.id));
+        nav.appendChild(b);
+      }
+
+      // Kasa, bar ve mutfak baştan yüklensin (arka planda çalışsınlar)
+      for (const p of PANELS) if (p.preload) frameFor(p);
+      let start = 'kasa';
+      try { start = localStorage.getItem(KEY) || start; } catch {}
+      show(start);
+
+      // Klavye: Ctrl+1 … Ctrl+5 ile paneller arası geçiş
+      window.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && /^[1-9]$/.test(e.key) && PANELS[+e.key - 1]) {
+          e.preventDefault();
+          show(PANELS[+e.key - 1].id);
+        }
+      });
+
+      document.getElementById('reload').addEventListener('click', () => {
+        const active = [...loaded.values()].find((f) => f.classList.contains('active'));
+        try { active && active.contentWindow.location.reload(); } catch { active && (active.src = active.src); }
+      });
+      document.getElementById('full').addEventListener('click', () => {
+        if (document.fullscreenElement) document.exitFullscreen();
+        else document.documentElement.requestFullscreen().catch(() => {});
+      });
+
+      const clock = document.getElementById('clock');
+      const tick = () => (clock.textContent = new Date().toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }));
+      tick();
+      setInterval(tick, 10000);
+
+      // Arka plandaki panel çalışıyor mu? (yüklü sekmelerde yeşil nokta)
+      setInterval(() => {
+        for (const b of nav.children) b.classList.toggle('live', loaded.has(b.dataset.id));
+      }, 2000);
+    </script>
+  </body>
+</html>
